@@ -43,5 +43,5 @@ This script is configured with `CUDA_VISIBLE_DEVICES=0,1,2,3` and `--tensor-para
 
 # Run Evaluation
 
-
+The test images should go in the folder image  and episodes_test.jsonl should go in the folder QA_eval （test_result will be in this folder）
 > coin_env/bin/python eval_model.py 0 167 --description-type all
