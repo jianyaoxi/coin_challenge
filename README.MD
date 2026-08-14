@@ -30,17 +30,17 @@ The scripts will create virtual environments based on your system Python.
 
 Creates coin_env for evaluation scripts
 
-> bash scripts/install.sh        
+> source scripts/install.sh        
 
 Creates vllm_env for vLLM service
 
-> bash scripts/install_vllm.sh   
+> source scripts/install_vllm.sh   
 
 # Start vLLM Inference Service
 
 > cd coin_challenge
 
-> bash scripts/launch_eval_qwen_oracle.sh
+> source scripts/launch_eval_qwen_oracle.sh
 
 # Run Evaluation
 
