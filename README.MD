@@ -3,7 +3,7 @@
 This repository hosts the evaluation code and runtime environment for the CoIN Challenge, including the evaluation pipeline, vLLM inference service, dataset, and deployment scripts.
 
 # Directory Structure
-
+```text
 coin_challenge
 ├── Questioner.py          # Questioner interface + fine-tuned YourQuestioner (questioner)
 ├── Oracle.py              # OracleInterface abstract base class (required by official submission)
@@ -24,6 +24,7 @@ coin_challenge
 ├── coinenv_requirements.txt
 ├── vllmenv_requirements.txt
 └── results/               # Evaluation outputs from eval_model.py (.gzip.json)
+```
 # Environment Installation
 The scripts will create virtual environments based on your system Python. 
 >cd coin_challenge
