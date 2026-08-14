@@ -26,7 +26,6 @@ coin_challenge
 # Environment Installation
 The scripts will create virtual environments based on your system Python. 
 
->cd coin_challenge
 
 Creates coin_env for evaluation scripts
 
@@ -38,12 +37,11 @@ Creates vllm_env for vLLM service
 
 # Start vLLM Inference Service
 
-> cd coin_challenge
+This script is configured with `CUDA_VISIBLE_DEVICES=0,1,2,3` and `--tensor-parallel-size 4`, which is the setup for my local machine. Please adjust these parameters according to the number of GPUs available on your device.
 
 > source scripts/launch_eval_qwen_oracle.sh
 
 # Run Evaluation
 
-> cd coin_challenge
 
 > coin_env/bin/python eval_model.py 0 167 --description-type all
