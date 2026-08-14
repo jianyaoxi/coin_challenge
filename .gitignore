@@ -1,0 +1,40 @@
+coin_env/
+vllm_env/
+env/
+venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 模型权重（已在 Hugging Face）
+output_v7/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# 缓存目录
+.cache/
+~/.cache/
+.vllm_cache/
+
+# IDE 配置
+.vscode/
+.idea/
+*.iml
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# 其他
+*.out
+*.err
+results/
+images/

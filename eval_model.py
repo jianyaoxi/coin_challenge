@@ -1,0 +1,265 @@
+import numpy as np
+import json
+from PIL import Image
+from utils import load_api_keys, encode_image_b64
+from oracle_qwen import QwenOracle
+from env import QAEnv
+import time
+import gzip
+import argparse
+import os
+from Questioner import YourQuestioner
+
+
+parser = argparse.ArgumentParser(prog="eval-QA-model")
+parser.add_argument("start_idx", type=int, help="First trajectory index")
+parser.add_argument("end_idx", type=int, help="Last trajectory index")
+parser.add_argument(
+    "--description-type",
+    default="category",
+    help="Type of description. Choose one among 'all', 'category', 'color', 'context', 'color_context_feature', 'color_feature', 'color_context'.",
+)
+parser.add_argument(
+    "--local",
+    type=int,
+    default=0,
+    help="(已弃用，忽略) 曾用于选择本地 oracle；现在 oracle 固定为 QwenOracle（千问内置模型）。保留仅为了兼容旧命令行。",
+)
+parser.add_argument(
+    "--oracle",
+    default=None,
+    choices=["gemini", "local", "qwen"],
+    help="(已弃用，忽略) 曾用于选择 oracle；现在 oracle 固定为 QwenOracle（千问内置模型）。保留仅为了兼容旧命令行。",
+)
+
+args = parser.parse_args()
+
+run_type = "train"
+
+ALLOWED_DESCPRITION_TYPES = [
+    "all",
+    "category",
+    "color",
+    "context",
+    "color_context_feature",
+    "color_feature",
+    "color_context",
+]
+
+assert args.description_type in ALLOWED_DESCPRITION_TYPES, f"--description-type should be one among {ALLOWED_DESCPRITION_TYPES}"
+
+
+
+def _add_obs_and_question_to_log(
+    obs, new_obs, action, observations, actions, answers, reasonings
+):
+    image = Image.fromarray(obs["image"])#当前action之前的环境的图片 new_obs新的环境
+    if len(observations) == 0:#初始化
+        observations.append(image)
+        actions.append([])
+        answers.append([])
+        reasonings.append([])
+    elif image != observations[-1]:#得出了判定的结论，图像发生偏移
+        observations.append(image)
+        if action["question"] is not None:
+            actions.append([f"Q: {action['question'][:200]}"])
+            answers.append([f"A: {new_obs['answer']}"])
+        else:
+            actions.append([f"C: {bool(action['conclusion'])}"])
+            answers.append([])
+        reasonings.append([action["reasoning"]])
+    else:#没有结论，在继续询问
+        if action["question"] is not None:
+            assert new_obs["answer"] is not None#new_obs["answer"] 对应action["question"]的答案
+            s = f"Q: {action['question'][:200]}"
+            answers[-1].append(f"A: {new_obs['answer']}")
+        else:
+            s = f"C: {bool(action['conclusion'])}"
+        actions[-1].append(s)
+        reasonings[-1].append(action["reasoning"])
+#智能体给出action，action会感知环境获得new_obs，感知环境通过询问oracle来获得，image可能发生改变也可能不发生改变
+
+already_done_ids = set()
+
+# Example usage:
+if __name__ == "__main__":
+    now = str(time.time_ns())
+
+    load_api_keys()
+    # model = "gemini-3-flash-preview"
+
+    # -------------------------------------- ORACLE ----------------------------------------
+    # if you want to use a custom oracle, you have to change these lines. You can
+    # implement it however you want, but it should inher it from the class OracleInterace
+    # (see file Oracle.py)
+    # oracle 固定为继承 OracleInterface 的 QwenOracle（千问内置模型，官方提交要求）。
+    # --oracle / --local 参数仅保留用于兼容旧命令行，不再做任何分支选择。
+    oracle_model_id = os.environ.get("QWEN_MODEL_ID", "qwen3.7-flash")
+    oracle_client = QwenOracle(model_id=oracle_model_id)
+    print(f"[INFO] Using Qwen (DashScope) oracle model: {oracle_model_id}")
+    print(f"[INFO] Using oracle: {oracle_client}")
+    # --------------------------------------------------------------------------------------
+    if args.description_type.lower() == "all":
+        task_types = ALLOWED_DESCPRITION_TYPES[1:]
+    else:
+        task_types = [args.description_type]
+
+    for task_type in task_types:
+        env = QAEnv(
+            oracle_client,
+            f"QA_eval/episodes_{run_type}.jsonl",
+            render_mode="rgb",
+            task_type=task_type,
+        )
+
+        log_data = dict(
+            id=[],
+            target_image=[],
+            task=[],
+            observations=[],
+            questions=[],
+            answers=[],
+            reasonings=[],
+            n_successes=[],
+            n_questions=[],
+            time_required=[],
+        )
+        for episode in range(args.start_idx, args.end_idx):
+            _observations = []
+            _actions = []
+            _answers = []
+            _reasonings = []
+            try:
+                old_obs, info = env.reset(options={"episode_idx": episode})
+            except IndexError as e:
+                continue
+            print(f"EPISODE: {episode}, ID: {env.current_episode_data['id']}\n")
+            if env.current_episode_data["id"] in already_done_ids:
+                print(
+                    f"I did already run episode with id '{env.current_episode_data['id']}' for subset '{task_type}'"
+                )
+                continue
+            try:
+                _add_obs_and_question_to_log(
+                    old_obs, {}, {}, _observations, _actions, _answers, _reasonings
+                )
+            except Exception as e:  # noqa
+                print("[ERROR] Error in episode number: ", episode)
+                print(str(e))
+                continue
+
+            try:
+                questioner = YourQuestioner(info)  # TODO: YOUR QUESTIONER HERE
+            except:  # noqa
+                raise NotImplementedError(
+                    "Insert here your Questioner class. See the README for more details."
+                )
+
+            questioner.reset_time()
+            print(f"Task is: {info['task_description']}")
+
+            for step in range(200):
+                print("=============")
+                # action = ACTIONS[step]
+                try:
+                    action = questioner.ask_or_conclude(old_obs)
+                except Exception as e:  # noqa
+                    print("[ERROR] Error in episode number: ", episode)
+                    print(str(e))
+                    break
+
+                print(f"Current action: {action}")
+                obs, reward, terminated, truncated, info = env.step(action)
+#做出动作感知新的环境
+                # TODO for some reason sometimes the env doesn't switch observation after a conclusion, especially in the training set.
+                # The bug is fixed for the heldout set. For the time being, we just break the loop as we consider this an error
+                # (Nothing will be logged if we break here)
+                # Conditions: the answer was a conclusion; the two images are the same but neither terminated nor truncated was set
+                if action["conclusion"] is not None and (
+                    np.all(obs["image"] == old_obs["image"])
+                    and not terminated
+                    and not truncated
+                ):
+                    print(
+                        "[ERROR] for some reason, no new image was supplied and this is an error"
+                    )
+                    break
+
+                if action["question"] is not None:
+                    a = ""
+                    if obs["answer"] is not None:
+                        a = obs["answer"]
+                    questioner.add_answer(a)#这个是要维护提问者的问题
+                try:
+                    _add_obs_and_question_to_log(
+                        old_obs,
+                        obs,
+                        action,
+                        _observations,
+                        _actions,
+                        _answers,
+                        _reasonings,
+                    )
+                except Exception as e:  # noqa
+                    print("[ERROR] Error in episode number: ", episode)
+                    print(str(e))
+                    _add_obs_and_question_to_log(
+                        old_obs,
+                        obs,
+                        action,
+                        _observations,
+                        _actions,
+                        _answers,
+                        _reasonings,
+                    )
+                    break
+
+                # env.render()
+
+                old_obs = obs
+                if terminated or truncated:
+                    times = round(time.time() - env.initial_time, 2)
+                    try:
+                        print(f"Episode finished after {step + 1} steps")
+                        _id = env.current_episode_data["id"]
+                        _target_image = encode_image_b64(
+                            Image.open(env.current_episode_data["path"]), format="png"
+                        )
+                        _task = env.current_episode_data["tasks"][task_type]
+                        _n_successes = env.n_successes
+                        _n_questions = questioner.n_questions
+                        _time_required = round(questioner.time_required, 2)
+
+                        # Append
+                        log_data["id"].append(_id)
+                        log_data["target_image"].append(_target_image)
+                        log_data["task"].append(_task)
+                        log_data["n_successes"].append(_n_successes)
+                        log_data["n_questions"].append(_n_questions)
+                        log_data["time_required"].append(_time_required)
+                        log_data["observations"].append([
+                            encode_image_b64(o, format="png") for o in _observations
+                        ])
+                        log_data["questions"].append(_actions)
+                        log_data["answers"].append(_answers)
+                        log_data["reasonings"].append(_reasonings)
+                    except Exception as e:  # noqa
+                        print("[ERROR] Error in episode number: ", episode)
+                        print(str(e))
+                    break
+            print("\n\n")
+
+        if len(log_data["id"]) != 0:
+            print(
+                f"~~~~~~~~~~ Finished {task_type}_{run_type}_{str(args.start_idx)}_{str(args.end_idx)} ~~~~~~~~~~"
+            )
+            data_to_save = json.dumps(log_data).encode()
+
+            os.makedirs("results", exist_ok=True)
+            with gzip.GzipFile(
+                f"results/{questioner.__class__.__name__}_{task_type}_{run_type}_{str(args.start_idx)}_{str(args.end_idx)}.gzip.json",
+                "w",
+            ) as file:
+                file.write(data_to_save)
+
+        env.close()
