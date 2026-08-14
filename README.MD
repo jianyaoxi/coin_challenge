@@ -1,3 +1,10 @@
+# CoIN Challenge Evaluation Project
+
+This repository hosts the evaluation code and runtime environment for the CoIN Challenge, including the evaluation pipeline, vLLM inference service, dataset, and deployment scripts.
+
+## Directory Structure
+
+```text
 coin_challenge
 ├── Questioner.py          # Questioner interface + fine-tuned YourQuestioner (questioner)
 ├── Oracle.py              # OracleInterface abstract base class (required by official submission)
@@ -18,15 +25,17 @@ coin_challenge
 ├── coinenv_requirements.txt
 ├── vllmenv_requirements.txt
 └── results/               # Evaluation outputs from eval_model.py (.gzip.json)
-# This will create virtual environments using your Python; ensure the created environment's Python version is >= 3.11
-cd /root/coin_challenge
-bash scripts/install.sh        # Creates coin_env (for evaluation scripts)
-bash scripts/install_vllm.sh   # Creates vllm_env (for vLLM service)
-DASHSCOPE_API_KEY="your Alibaba Cloud Bailian API Key"
-nvidia-smi                       # 4× 2080Ti present
-ls /root/coin_challenge/images   # Evaluation images exist
-test -f ~/.env.ml && echo "key file ok"
-cd /root/coin_challenge
-bash scripts/launch_eval_qwen_oracle.sh   # Note: this assumes 4x 2080Ti GPUs are available; if not, adjust accordingly
-cd ./coin_challenge
+The scripts will create virtual environments based on your system Python. 
+cd coin_challenge
+bash scripts/install.sh        # Creates coin_env for evaluation scripts
+bash scripts/install_vllm.sh   # Creates vllm_env for vLLM service
+
+Start vLLM Inference Service
+
+cd coin_challenge
+bash scripts/launch_eval_qwen_oracle.sh
+
+Run Evaluation
+
+cd coin_challenge
 coin_env/bin/python eval_model.py 0 167 --description-type all
